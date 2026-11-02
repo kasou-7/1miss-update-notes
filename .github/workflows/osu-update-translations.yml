@@ -30,7 +30,8 @@ jobs:
         with:
           persist-credentials: false
       - name: Install pinned text conversion dependency
-        run: python -m pip install --require-hashes --only-binary=:all: -r tauri-v2/automation/requirements-translations.txt
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: -r tauri-v2/automation/requirements-translations.txt
       - name: Read public translation cache
         run: |
           mkdir -p translation-output
