@@ -1,0 +1,56 @@
+name: Chinese osu! release notes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/osu-update-translations.yml'
+      - 'tauri-v2/automation/**'
+  workflow_dispatch:
+  schedule:
+    - cron: '23 */6 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: osu-update-translations
+  cancel-in-progress: false
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install pinned text conversion dependency
+        run: python -m pip install --require-hashes --only-binary=:all: -r tauri-v2/automation/requirements-translations.txt
+      - name: Read public translation cache
+        run: |
+          mkdir -p translation-output
+          python - <<'PY'
+          import json,os,urllib.error,urllib.request
+          from pathlib import Path
+          root='https://raw.githubusercontent.com/'+os.environ['GITHUB_REPOSITORY']+'/refs/heads/update-translations/'
+          for name in ('zh-Hans.json','translation-memory.json'):
+              try:
+                  with urllib.request.urlopen(root+name,timeout=25) as response:
+                      data=response.read(8*1024*1024+1)
+                      if len(data)>8*1024*1024:raise ValueError('Cache too large')
+                      json.loads(data)
+                      Path('translation-output',name).write_bytes(data)
+              except urllib.error.HTTPError as error:
+                  if error.code!=404:raise
+          PY
+      - name: Incremental anonymous translation
+        run: python tauri-v2/automation/update_translations.py --output translation-output --max-characters 12000 --delay 15
+      - name: Publish public data branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python tauri-v2/automation/publish_update_translations.py --directory translation-output
